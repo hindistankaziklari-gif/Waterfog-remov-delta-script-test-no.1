@@ -1,0 +1,31 @@
+-- Delta Executor: Remove Water Fog & Clear Distance Fog
+local Lighting = game:GetService("Lighting")
+local Terrain = workspace:FindFirstChildOfClass("Terrain")
+
+-- Make water fully transparent (removes the underwater fog/blur)
+if Terrain then
+    Terrain.WaterWaveSize = 0
+    Terrain.WaterWaveSpeed = 0
+    Terrain.WaterReflectance = 0
+    Terrain.WaterTransparency = 1  -- fully clear
+end
+
+-- Push distance fog out of view
+Lighting.FogStart = 0
+Lighting.FogEnd = 9e9
+Lighting.GlobalShadows = false-- Delta Executor: Remove Water Fog & Clear Distance Fog
+local Lighting = game:GetService("Lighting")
+local Terrain = workspace:FindFirstChildOfClass("Terrain")
+
+-- Make water fully transparent (removes the underwater fog/blur)
+if Terrain then
+    Terrain.WaterWaveSize = 0
+    Terrain.WaterWaveSpeed = 0
+    Terrain.WaterReflectance = 0
+    Terrain.WaterTransparency = 1  -- fully clear
+end
+
+-- Push distance fog out of view
+Lighting.FogStart = 0
+Lighting.FogEnd = 9e9
+Lighting.GlobalShadows = false
