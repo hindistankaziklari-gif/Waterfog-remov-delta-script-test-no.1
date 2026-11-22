@@ -1,31 +1,75 @@
--- Delta Executor: Remove Water Fog & Clear Distance Fog
+-- Delta Executor: Sail and Sink - Clear Water & Remove Depth Darkening
+-- Removes water fog, clears the water, and stops the screen from getting darker as you dive deeper.
+
 local Lighting = game:GetService("Lighting")
 local Terrain = workspace:FindFirstChildOfClass("Terrain")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Camera = workspace.CurrentCamera
 
--- Make water fully transparent (removes the underwater fog/blur)
+-- 1. Clear the water and remove distance fog
 if Terrain then
+    Terrain.WaterTransparency = 1
+    Terrain.WaterColor = Color3.fromRGB(255, 255, 255)
     Terrain.WaterWaveSize = 0
     Terrain.WaterWaveSpeed = 0
     Terrain.WaterReflectance = 0
-    Terrain.WaterTransparency = 1  -- fully clear
+end
+Lighting.FogEnd = 9e9
+Lighting.FogStart = 0
+
+-- 2. Remove existing underwater overlay and darkening filters
+local function cleanEffects()
+    -- Remove the game's underwater overlay GUI if it exists
+    local playerGui = Players.LocalPlayer:FindFirstChild("PlayerGui")
+    if playerGui and playerGui:FindFirstChild("UnderwaterOverlay") then
+        playerGui.UnderwaterOverlay:Destroy()
+    end
+
+    -- Remove or disable negative lighting effects on the Camera and Lighting
+    for _, container in ipairs({Camera, Lighting}) do
+        for _, effect in ipairs(container:GetChildren()) do
+            if effect:IsA("ColorCorrectionEffect") then
+                effect.Brightness = 0.1
+                effect.Contrast = 0.1
+                effect.Saturation = 0
+                effect.TintColor = Color3.fromRGB(255, 255, 255)
+            elseif effect:IsA("BlurEffect") or effect:IsA("Atmosphere") or effect:IsA("DepthOfFieldEffect") then
+                effect:Destroy()
+            end
+        end
+    end
 end
 
--- Push distance fog out of view
-Lighting.FogStart = 0
-Lighting.FogEnd = 9e9
-Lighting.GlobalShadows = false-- Delta Executor: Remove Water Fog & Clear Distance Fog
-local Lighting = game:GetService("Lighting")
-local Terrain = workspace:FindFirstChildOfClass("Terrain")
+-- 3. Run the cleanup once, then continuously to fight re-application
+cleanEffects()
 
--- Make water fully transparent (removes the underwater fog/blur)
-if Terrain then
-    Terrain.WaterWaveSize = 0
-    Terrain.WaterWaveSpeed = 0
-    Terrain.WaterReflectance = 0
-    Terrain.WaterTransparency = 1  -- fully clear
+-- Disconnect any previous loop if this script is run multiple times
+if _G.SailSinkClearLoop then
+    _G.SailSinkClearLoop:Disconnect()
 end
 
--- Push distance fog out of view
-Lighting.FogStart = 0
-Lighting.FogEnd = 9e9
-Lighting.GlobalShadows = false
+_G.SailSinkClearLoop = RunService.RenderStepped:Connect(function()
+    -- Keep water clear and fog off
+    if Terrain then
+        Terrain.WaterTransparency = 1
+        Terrain.WaterColor = Color3.fromRGB(255, 255, 255)
+    end
+    Lighting.FogEnd = 9e9
+
+    -- Keep the underwater overlay gone
+    local playerGui = Players.LocalPlayer:FindFirstChild("PlayerGui")
+    if playerGui and playerGui:FindFirstChild("UnderwaterOverlay") then
+        playerGui.UnderwaterOverlay:Destroy()
+    end
+
+    -- Keep lighting effects neutralized
+    local cc = Camera:FindFirstChildOfClass("ColorCorrectionEffect") 
+        or Lighting:FindFirstChildOfClass("ColorCorrectionEffect")
+    if cc then
+        cc.Brightness = 0.1
+        cc.Contrast = 0.1
+        cc.Saturation = 0
+        cc.TintColor = Color3.fromRGB(255, 255, 255)
+    end
+end)
