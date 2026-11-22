@@ -1,0 +1,1 @@
+# Waterfog-remov-delta-script-test-no.1
