@@ -1,0 +1,73 @@
+-- Delta Executor: Water Fog Reduction + Max Render Distance
+-- Fills the whole viewport with clear water + pushes fog/render distance to maximum.
+
+local Lighting = game:GetService("Lighting")
+local Terrain  = workspace:FindFirstChildOfClass("Terrain")
+local Players  = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+-- 1) Clear water so you can see through it into the distance
+if Terrain then
+    Terrain.WaterTransparency = 1
+    Terrain.WaterWaveSize     = 0
+    Terrain.WaterWaveSpeed    = 0
+    Terrain.WaterReflectance  = 0
+    Terrain.WaterColor        = Color3.fromRGB(255, 255, 255)
+end
+
+-- 2) Push fog out of render distance so nothing is hidden
+Lighting.FogStart = 0
+Lighting.FogEnd   = 9e9
+Lighting.Brightness = 2
+Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+Lighting.Ambient = Color3.fromRGB(255, 255, 255)
+
+-- 3) Kill any Atmosphere (Atmosphere overrides FogEnd visually on modern Roblox)
+for _, eff in ipairs(Lighting:GetChildren()) do
+    if eff:IsA("Atmosphere") then
+        eff.Density     = 0
+        eff.Haze        = 0
+        eff.Glare       = 0
+        eff.Offset      = 0
+    elseif eff:IsA("ColorCorrectionEffect") then
+        eff.Brightness = 0.1
+        eff.Contrast   = 0.1
+        eff.Saturation = 0
+        eff.TintColor  = Color3.fromRGB(255, 255, 255)
+    end
+end
+
+-- 4) Remove underwater overlay & other depth-darkening GUIs if present
+local function clearOverlays()
+    local pg = Players.LocalPlayer:FindFirstChild("PlayerGui")
+    if not pg then return end
+    for _, gui in ipairs(pg:GetChildren()) do
+        local lower = gui.Name:lower()
+        if lower:find("underwater", 1, true)
+        or lower:find("water", 1, true)
+        or lower:find("depth", 1, true) then
+            gui:Destroy()
+        end
+    end
+end
+
+-- 5) Loop: keep fog off, water clear, overlays gone — every frame
+if _G.WaterFogRenderLoop then _G.WaterFogRenderLoop:Disconnect() end
+_G.WaterFogRenderLoop = RunService.RenderStepped:Connect(function()
+    Lighting.FogStart = 0
+    Lighting.FogEnd   = 9e9
+
+    if Terrain then
+        Terrain.WaterTransparency = 1
+        Terrain.WaterColor        = Color3.fromRGB(255, 255, 255)
+    end
+
+    for _, eff in ipairs(Lighting:GetChildren()) do
+        if eff:IsA("Atmosphere") then
+            eff.Density = 0
+            eff.Haze    = 0
+        end
+    end
+
+    clearOverlays()
+end)
