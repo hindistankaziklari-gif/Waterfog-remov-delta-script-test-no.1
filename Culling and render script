@@ -1,0 +1,156 @@
+-- Delta Executor: Extended Render Distance + Aggressive Distance Culling
+-- Raises streaming radius as high as possible, then culls everything
+-- beyond a configurable distance so FPS does not collapse.
+
+local Players     = game:GetService("Players")
+local RunService  = game:GetService("RunService")
+local Workspace   = game:GetService("Workspace")
+local Camera      = Workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+
+----------------------------------------------------------------
+-- CONFIGURATION
+----------------------------------------------------------------
+local RENDER_DISTANCE   = 3000   -- studs you want to see (raise for more, lower for FPS)
+local CULL_DISTANCE     = 3500   -- objects beyond this get hidden
+local UPDATE_INTERVAL   = 0.12   -- seconds between cull passes (lower = smoother cull, more CPU)
+local MAX_OBJECTS_PER_FRAME = 40 -- cap per pass to avoid stutter spikes
+local EXCLUDED_NAMES    = { Baseplate = true, Terrain = true }
+local EXCLUDED_CLASSES  = {
+    "Terrain", "Camera", "Sound", "Script", "LocalScript",
+    "ModuleScript", "Attachment", "Constraint", "WeldConstraint",
+    "Motor6D", "Decal", "Texture", "Humanoid", "Highlight"
+}
+
+----------------------------------------------------------------
+-- 1. PUSH STREAMING RADIUS TO THE LIMIT
+----------------------------------------------------------------
+-- StreamingEnabled must be true for radius changes to have any effect.
+-- If the game disabled it, we cannot enable it from the client, but we
+-- still apply the distance culling below which works regardless.
+pcall(function()
+    Workspace.StreamingEnabled = true
+    Workspace.StreamingMinRadius    = 256
+    Workspace.StreamingTargetRadius = RENDER_DISTANCE
+end)
+
+----------------------------------------------------------------
+-- 2. BUILD THE CULLING REGISTRY
+----------------------------------------------------------------
+local tracked   = {}   -- [BasePart] = original transparency / parent
+local lookup    = {}   -- [BasePart] = true
+local excluded  = {}
+
+local function isExcluded(obj)
+    if not obj:IsA("BasePart") then return true end
+    if EXCLUDED_NAMES[obj.Name] then return true end
+    for _, class in ipairs(EXCLUDED_CLASSES) do
+        if obj:IsA(class) then return true end
+    end
+    -- never cull the local character or anything attached to it
+    local char = LocalPlayer.Character
+    if char and obj:IsDescendantOf(char) then return true end
+    return false
+end
+
+local function register(obj)
+    if excluded[obj] or lookup[obj] then return end
+    if isExcluded(obj) then excluded[obj] = true return end
+    tracked[obj] = {
+        Transparency = obj.Transparency,
+        Parent       = obj.Parent,
+        Hidden       = false,
+    }
+    lookup[obj] = true
+end
+
+-- Initial scan
+for _, obj in ipairs(Workspace:GetDescendants()) do
+    if obj:IsA("BasePart") then register(obj) end
+end
+
+-- Watch for new parts (streamed in or spawned)
+Workspace.DescendantAdded:Connect(function(obj)
+    if obj:IsA("BasePart") then register(obj) end
+end)
+
+Workspace.DescendantRemoving:Connect(function(obj)
+    tracked[obj] = nil
+    lookup[obj]  = nil
+end)
+
+----------------------------------------------------------------
+-- 3. CULLING LOOP
+----------------------------------------------------------------
+local cullAccum = 0
+local index     = 1
+local keys      = {}
+
+local function refreshKeys()
+    keys = {}
+    for k in pairs(tracked) do table.insert(keys, k) end
+end
+refreshKeys()
+
+local function isInView(part)
+    local cf = Camera.CFrame
+    local toPart = (part.Position - cf.Position).Unit
+    local dot = cf.LookVector:Dot(toPart)
+    return dot > -0.2 -- loose frustum check; culls things clearly behind camera
+end
+
+local function cullPass()
+    local camPos = Camera.CFrame.Position
+    local processed = 0
+
+    while processed < MAX_OBJECTS_PER_FRAME and #keys > 0 do
+        index = index % #keys + 1
+        local part = keys[index]
+        processed = processed + 1
+
+        local data = tracked[part]
+        if not data or not part.Parent then
+            tracked[part] = nil
+            lookup[part]  = nil
+            table.remove(keys, index)
+            if #keys == 0 then break end
+            index = index - 1
+            continue
+        end
+
+        local dist = (part.Position - camPos).Magnitude
+
+        if dist > CULL_DISTANCE then
+            if not data.Hidden then
+                part.Transparency = 1
+                data.Hidden = true
+            end
+        elseif data.Hidden then
+            -- Only unhide if it is close enough AND roughly in view
+            if dist < CULL_DISTANCE * 0.9 and isInView(part) then
+                part.Transparency = data.Transparency
+                data.Hidden = false
+            end
+        end
+    end
+end
+
+RunService.Heartbeat:Connect(function(dt)
+    cullAccum = cullAccum + dt
+    if cullAccum < UPDATE_INTERVAL then return end
+    cullAccum = 0
+    cullPass()
+end)
+
+----------------------------------------------------------------
+-- 4. KEEP STREAMING RADIUS ALIVE (some games reset it)
+----------------------------------------------------------------
+task.spawn(function()
+    while task.wait(2) do
+        pcall(function()
+            if Workspace.StreamingEnabled then
+                Workspace.StreamingTargetRadius = RENDER_DISTANCE
+            end
+        end)
+    end
+end)
