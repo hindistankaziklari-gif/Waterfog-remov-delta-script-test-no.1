@@ -1,0 +1,30 @@
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+
+local function createESP(ship)
+    if not ship:IsA("Model") then return end
+    if ship:FindFirstChild("CorrosionESP") then return end
+
+    local h = Instance.new("Highlight")
+    h.Name = "CorrosionESP"
+    h.Adornee = ship
+    h.FillColor = Color3.new(1, 1, 1)
+    h.OutlineColor = Color3.new(1, 1, 1)
+    h.FillTransparency = 0.2
+    h.OutlineTransparency = 0
+    h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    h.Parent = ship
+end
+
+local function scan()
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("Model") and obj:GetAttribute("Corroded") == true then
+            createESP(obj)
+        end
+    end
+end
+
+while true do
+    scan()
+    task.wait(1)
+end
